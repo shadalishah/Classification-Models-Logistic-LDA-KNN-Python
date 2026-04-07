@@ -1,0 +1,570 @@
+---
+title: "Statistical Learning Analysis Report"
+subtitle: "Chapter 4: ISLR2 Exercise Solutions"
+author: "Shad Ali Shah"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    number-sections: true
+    number-depth: 3
+    code-fold: true
+    code-tools: true
+    code-summary: "Show code"
+    theme: cosmo
+    colorlinks: true
+    link-citations: true
+    df-print: kable
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    crossref:
+      fig-title: "Figure"
+      tbl-title: "Table"
+      fig-prefix: "Fig."
+      tbl-prefix: "Table"
+execute:
+  echo: true
+  warning: false
+  message: false
+  error: true
+  cache: false
+  keep-going: true
+  fig-width: 6.5
+  fig-height: 4
+jupyter: python3
+---
+
+
+
+
+## Exercise 13
+
+```{python}
+import numpy as np
+import pandas as pd
+from matplotlib.pyplot import subplots
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import ISLP
+from ISLP import load_data
+from ISLP.models import (ModelSpec as MS,summarize)
+import seaborn as sns
+from sklearn.discriminant_analysis import \
+     (LinearDiscriminantAnalysis as LDA,
+      QuadraticDiscriminantAnalysis as QDA)
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+```
+
+```{python}
+Weekly=load_data("Weekly")
+```
+
+```{python}
+Weekly.head()
+```
+
+### (a)
+
+First step to look for patterns is to draw statistical description of data. For this we can use the method describe() as follows:
+
+```{python}
+Weekly.describe()
+```
+
+```{python}
+Weekly.corr(numeric_only=True)
+```
+
+Thanks to the correlation matrix, the only predictible trend is between Volume and Year. But let's draw graphs as the question asks.
+
+```{python}
+sns.pairplot(Weekly);
+```
+
+```{python}
+plt.scatter(Weekly['Year'],Weekly['Volume']);
+```
+
+Given the plots shown above, the only visible pattern is the one which relates Year to Volume
+
+### (b)
+
+```{python}
+allvars=Weekly.columns.drop(['Today','Direction','Year'])
+design=MS(allvars)
+X=design.fit_transform(Weekly)
+y=Weekly.Direction=='Up'
+glm=sm.GLM(y,X,family=sm.families.Binomial())
+res=glm.fit()
+res.summary()
+```
+
+Only Lag2 seems to be statistically significant.
+
+### (c)
+
+```{python}
+probs=res.predict()
+labels=np.array(['Down']*1089)
+labels[probs>0.5]="Up"
+```
+
+```{python}
+ISLP.confusion_table(labels,Weekly.Direction)
+```
+
+```{python}
+(557+54)/(54+557+430+48)
+```
+
+The accuracy rate is 56%, slightly better than random guessing. Given that we chose that 'up' is the positive direction, the error rate is mainly due to false positive classification. Which means that 430 stocks are predicted to go up by the model while they truly go down.  
+
+### (d)
+
+```{python}
+# Selecting the asked period and the corresponding training set with Lag2 as the only predictor
+train=(Weekly.Year<2009)
+W_train=Weekly.loc[train].Lag2
+W_test=Weekly.loc[~train].Lag2
+W_test.shape
+```
+
+```{python}
+#Refitting the new model
+X_train, X_test = X.loc[train].Lag2, X.loc[~train].Lag2
+y_train, y_test = y.loc[train], y.loc[~train]
+glm_train = sm.GLM(y_train,
+                   X_train,
+                   family=sm.families.Binomial())
+results = glm_train.fit()
+#Designing the probabilities based on the training set
+probs = results.predict(exog=X_test)
+
+X_t=np.array(X_train)
+XX=X_t.reshape(np.shape(X_t)[0],1)
+X_ts=np.array(X_test)
+Xts=X_ts.reshape(np.shape(X_ts)[0],1)
+```
+
+```{python}
+#Preparing the test set to compare with the corresponding training set in the confusion matrix
+D=Weekly.Direction
+Test_set=D.loc[~train]
+Train_set=D.loc[train]
+#Converting the probs matrix to a matrix filled with direction values
+labels=np.array(['Down']*104)
+labels[probs>0.5]='Up'
+C=ISLP.confusion_table(labels,Test_set)
+Train_s=np.array(Train_set)
+TT=Train_s.reshape(np.shape(Train_set)[0],1)
+Test_s=np.array(Test_set)
+TS=Test_s.reshape(np.shape(Test_s)[0],1)
+TS.shape
+```
+
+```{python}
+C
+```
+
+```{python}
+(20+37)/104
+```
+
+The rate of correct predictions on the held out data is around 55%. 
+
+### (e)
+
+```{python}
+lda=LDA(store_covariance=True)
+lda.fit(XX, Train_set)
+```
+
+```{python}
+lda_pred=lda.predict(Xts)
+lda_predm=np.array(lda_pred)
+lda_predm1=lda_predm.reshape(np.shape(lda_predm)[0],1)
+ISLP.confusion_table(lda_predm1,TS)
+```
+
+```{python}
+(9+56)/104
+```
+
+LDA performs better than logistic regression since Lag2 seems to follow a normal distribution from the previous correlation plot.
+
+### (f)
+
+```{python}
+qda=QDA(store_covariance=True)
+qda.fit(XX, Train_set)
+```
+
+```{python}
+qda_pred=qda.predict(Xts)
+qda_predm=np.array(qda_pred)
+qda_predm1=qda_predm.reshape(np.shape(lda_predm)[0],1)
+ISLP.confusion_table(qda_predm1,TS)
+```
+
+```{python}
+61/(61+43)
+```
+
+Fraction of correct answers for QDA is around 59%, which means that it is lower than LDA but better than logistic regression. The QDA is better here than logistic regression for the same reason as for the LDA. However, LDA gives a better prediction than QDA since there are no signs of interactions among predictors.
+
+### (g)
+
+```{python}
+knn1 = KNeighborsClassifier(n_neighbors=1)
+knn1.fit(XX, Train_set)
+```
+
+```{python}
+knn1_pred=knn1.predict(Xts)
+knn1_predm=np.array(knn1_pred)
+knn1_predm1=knn1_predm.reshape(np.shape(knn1_predm)[0],1)
+ISLP.confusion_table(knn1_predm1,TS)
+```
+
+```{python}
+(22+30)/104
+```
+
+Since the LDA outperforms QDA we can already expect that KNN will perform poorly. The decision boundary
+should be linear. Furthermore, the rate giving the number of observations over the number of predictors is around 17, which is not large enough to justify such a non parametric technique.
+
+### (h)
+
+```{python}
+NB = GaussianNB()
+NB.fit(XX, Train_set)
+```
+
+```{python}
+NB_pred=NB.predict(Xts)
+NB_predm=np.array(NB_pred)
+NB_predm1=NB_predm.reshape(np.shape(NB_predm)[0],1)
+ISLP.confusion_table(NB_predm1,TS)
+```
+
+```{python}
+61/104
+```
+
+### (i)
+
+LDA appears to give the best results on the data set.
+
+## Exercise 14
+
+### (a)
+
+```{python}
+Auto=load_data("Auto")
+```
+
+```{python}
+Auto.head()
+```
+
+```{python}
+mpg01=np.where(Auto["mpg"]>Auto["mpg"].median(),1,0)
+```
+
+```{python}
+Auto['mpg01']=mpg01
+```
+
+### (b)
+
+```{python}
+Auto.corr(numeric_only=True)
+```
+
+```{python}
+sns.pairplot(Auto);
+```
+
+From the graph and the correlation matrix we can conclude that there may be a significant correlation among mpg01, displacement, weight and cylinders.
+
+```{python}
+x=Auto[['weight','displacement','cylinders']].values
+#the values attribute is used to convert x from a dataframe object to an array
+y=Auto['mpg01'].values
+```
+
+### (c)
+
+```{python}
+(X_train,X_test,y_train,y_test) = train_test_split(x,y,random_state=1)
+```
+
+### (d)
+
+```{python}
+lda=LDA(store_covariance=True)
+lda.fit(X_train, y_train)
+```
+
+```{python}
+lda_pred=lda.predict(X_test)
+ISLP.confusion_table(lda_pred,y_test)
+```
+
+```{python}
+(49+42)/(49+42+5+2)
+```
+
+```{python}
+LDA_test_err=1-accuracy_score(y_test, lda.predict(X_test))
+LDA_test_err
+```
+
+The test error obtained for the LDA model is 7%.
+
+### (e)
+
+```{python}
+qda=QDA(store_covariance=True)
+qda.fit(X_train, y_train)
+```
+
+```{python}
+qda_pred=qda.predict(X_test)
+QDA_test_err=1-accuracy_score(y_test, qda.predict(X_test))
+QDA_test_err
+```
+
+The test error obtained for the LDA model is 6%.
+
+### (f)
+
+```{python}
+lr=LogisticRegression()
+result=lr.fit(X_train,y_train)
+lr_test_error=1-accuracy_score(y_test, lr.predict(X_test))
+lr_test_error
+```
+
+The test error obtained for the logistic regression model is 6%.
+
+### (g)
+
+```{python}
+NB = GaussianNB()
+NB.fit(X_train, y_train)
+```
+
+```{python}
+NB_pred=NB.predict(X_test)
+NB_test_error=1-accuracy_score(y_test, NB_pred)
+NB_test_error
+```
+
+The test error obtained for Naive Bayes model is 7%.
+
+### (h)
+
+```{python}
+for k in range(1,101):
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train, y_train)
+    acc = accuracy_score(y_test, knn.predict(X_test))
+    print('K={:3}, accuracy = {:.4f}'.format(k, acc))
+```
+
+The value of 13 for K seems to give the best result for the KNN model.
+
+## Exercise 15
+
+### (a)
+
+```{python}
+def Power():
+    print(2**3)
+```
+
+### (b)
+
+```{python}
+def Power2(x,a):
+    print(x**a)
+```
+
+### (c)
+
+```{python}
+Power2(10,3)
+```
+
+```{python}
+Power2(8,17)
+```
+
+```{python}
+Power2(131,3)
+```
+
+### (d)
+
+```{python}
+def Power3(x,a):
+    return x**a
+```
+
+### (e)
+
+```{python}
+x = np.arange(1,10)
+y = Power3(x,2)
+fig, ax = plt.subplots(figsize=(12,12))
+ax.set_xscale('log')
+ax.set_title('Power3() with x^2 vs x on log-scale')
+ax.set_xlabel('log(x)')
+ax.set_ylabel('y=x^2')
+ax.plot(x,y);
+```
+
+```{python}
+fig, ax = plt.subplots(figsize=(12,12))
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_title('Power3() with x^2 vs x, both on log-scale')
+ax.set_xlabel('log(x)')
+ax.set_ylabel('log(x^2)')
+ax.plot(x,y);
+```
+
+### (f)
+
+```{python}
+def PlotPower(x,a,log=''):
+    fig, ax = plt.subplots(figsize=(12,12))
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_title('x^%.0f vs x' %a)
+    if log=='xy':
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_title('x^%.0f vs x, both on log-scale'%a)
+        ax.set_xlabel('log(x)')
+        ax.set_ylabel('log(x^%.0f)'%a)
+    if log=='x':
+        ax.set_xscale('log')
+        ax.set_title('x^%.0f vs log(x)'%a)
+        ax.set_xlabel('log(x)')
+        ax.set_ylabel('x^%.0f'%a)
+    if log=='y':
+        ax.set_yscale('log')
+        ax.set_title('log(x^%.0f) vs x'%a)
+        ax.set_xlabel('x')
+        ax.set_ylabel('log(x^%.0f)'%a)  
+    ax.plot(x,y);
+```
+
+## Exercise 16
+
+```{python}
+Boston=load_data('Boston')
+```
+
+```{python}
+# Create a response variable and add it to the Boston data set
+# 1 for crim_ab means that crime rate is above the median
+crim_ab=np.where(Boston["crim"]>Boston["crim"].median(),1,0)
+Boston['crim_ab']=crim_ab
+```
+
+```{python}
+Boston['crim_ab'].describe()
+```
+
+```{python}
+Boston.corr(numeric_only=True)
+```
+
+Features age, dis, nox, rad, tax and indus seem to be correlated with crim_ab.
+
+```{python}
+# Split data set into training and test data set
+x=Boston[['indus','nox','age','dis','rad','tax']].values
+#the values attribute is used to convert x from a dataframe object to an array
+y=Boston['crim_ab'].values
+(x_train,x_test,y_train,y_test)=train_test_split(x,y,random_state=1)
+```
+
+```{python}
+allvars=Boston[['indus','nox','age','dis','rad','tax']]
+design=MS(allvars)
+X=design.fit_transform(Boston)
+Y=Boston.crim_ab==1
+glm=sm.GLM(Y,X,family=sm.families.Binomial())
+res=glm.fit()
+res.summary()
+```
+
+```{python}
+probs=res.predict()
+labels=np.array([0]*Boston.shape[0])
+labels[probs>0.5]=1
+ISLP.confusion_table(labels,Boston.crim_ab)
+```
+
+```{python}
+(225+213)/(225+213+28+40)
+```
+
+The fraction of correct answers for logistic regression is around 87%.
+
+```{python}
+lda=LDA(store_covariance=True)
+lda.fit(x_train, y_train)
+```
+
+```{python}
+lda_pred=lda.predict(x_test)
+ISLP.confusion_table(lda_pred,y_test)
+```
+
+```{python}
+accuracy_score(y_test, lda.predict(x_test))
+```
+
+The fraction of correct answers for LDA is around 82%.
+
+```{python}
+NB = GaussianNB()
+NB.fit(x_train, y_train)
+```
+
+```{python}
+NB_pred=NB.predict(x_test)
+ISLP.confusion_table(NB_pred,y_test)
+```
+
+```{python}
+accuracy_score(y_test, NB_pred)
+```
+
+The fraction of correct answers for LDA is around 81%.
+
+```{python}
+for k in range(1,31):
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(x_train, y_train)
+    acc = accuracy_score(y_test, knn.predict(x_test))
+    print('K={:3}, accuracy = {:.4f}'.format(k, acc))
+```
+
+Best K=1 with an accuracy score of 94%.
+
+We conclude that KNN-1 is the best prediction model used for the subset of selected predictors.
+
+
